@@ -96,6 +96,18 @@ Ref<EditorExportPlatform> EditorExportPreset::get_platform() const {
 	return platform;
 }
 
+void EditorExportPreset::update_files_to_export() {
+	Vector<String> to_remove;
+	for (Set<String>::Element *E = selected_files.front(); E; E = E->next()) {
+		if (!FileAccess::exists(E->get())) {
+			to_remove.push_back(E->get());
+		}
+	}
+	for (int i = 0; i < to_remove.size(); ++i) {
+		selected_files.erase(to_remove[i]);
+	}
+}
+
 Vector<String> EditorExportPreset::get_files_to_export() const {
 
 	Vector<String> files;
@@ -543,8 +555,16 @@ void EditorExportPlugin::add_ios_framework(const String &p_path) {
 	ios_frameworks.push_back(p_path);
 }
 
+void EditorExportPlugin::add_ios_embedded_framework(const String &p_path) {
+	ios_embedded_frameworks.push_back(p_path);
+}
+
 Vector<String> EditorExportPlugin::get_ios_frameworks() const {
 	return ios_frameworks;
+}
+
+Vector<String> EditorExportPlugin::get_ios_embedded_frameworks() const {
+	return ios_embedded_frameworks;
 }
 
 void EditorExportPlugin::add_ios_plist_content(const String &p_plist_content) {
@@ -582,6 +602,14 @@ String EditorExportPlugin::get_ios_cpp_code() const {
 	return ios_cpp_code;
 }
 
+void EditorExportPlugin::add_ios_project_static_lib(const String &p_path) {
+	ios_project_static_libs.push_back(p_path);
+}
+
+Vector<String> EditorExportPlugin::get_ios_project_static_libs() const {
+	return ios_project_static_libs;
+}
+
 void EditorExportPlugin::_export_file_script(const String &p_path, const String &p_type, const PoolVector<String> &p_features) {
 
 	if (get_script_instance()) {
@@ -617,8 +645,10 @@ void EditorExportPlugin::skip() {
 void EditorExportPlugin::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("add_shared_object", "path", "tags"), &EditorExportPlugin::add_shared_object);
+	ClassDB::bind_method(D_METHOD("add_ios_project_static_lib", "path"), &EditorExportPlugin::add_ios_project_static_lib);
 	ClassDB::bind_method(D_METHOD("add_file", "path", "file", "remap"), &EditorExportPlugin::add_file);
 	ClassDB::bind_method(D_METHOD("add_ios_framework", "path"), &EditorExportPlugin::add_ios_framework);
+	ClassDB::bind_method(D_METHOD("add_ios_embedded_framework", "path"), &EditorExportPlugin::add_ios_embedded_framework);
 	ClassDB::bind_method(D_METHOD("add_ios_plist_content", "plist_content"), &EditorExportPlugin::add_ios_plist_content);
 	ClassDB::bind_method(D_METHOD("add_ios_linker_flags", "flags"), &EditorExportPlugin::add_ios_linker_flags);
 	ClassDB::bind_method(D_METHOD("add_ios_bundle_file", "path"), &EditorExportPlugin::add_ios_bundle_file);
@@ -1215,6 +1245,8 @@ void EditorExport::save_presets() {
 void EditorExport::_bind_methods() {
 
 	ClassDB::bind_method("_save", &EditorExport::_save);
+
+	ADD_SIGNAL(MethodInfo("export_presets_updated"));
 }
 
 void EditorExport::add_export_platform(const Ref<EditorExportPlatform> &p_platform) {
@@ -1302,8 +1334,13 @@ Vector<Ref<EditorExportPlugin> > EditorExport::get_export_plugins() {
 
 void EditorExport::_notification(int p_what) {
 
-	if (p_what == NOTIFICATION_ENTER_TREE) {
-		load_config();
+	switch (p_what) {
+		case NOTIFICATION_ENTER_TREE: {
+			load_config();
+		} break;
+		case NOTIFICATION_PROCESS: {
+			update_export_presets();
+		} break;
 	}
 }
 
@@ -1366,7 +1403,11 @@ void EditorExport::load_config() {
 			Vector<String> files = config->get_value(section, "export_files");
 
 			for (int i = 0; i < files.size(); i++) {
-				preset->add_export_file(files[i]);
+				if (!FileAccess::exists(files[i])) {
+					preset->remove_export_file(files[i]);
+				} else {
+					preset->add_export_file(files[i]);
+				}
 			}
 		}
 
@@ -1407,6 +1448,49 @@ void EditorExport::load_config() {
 	block_save = false;
 }
 
+void EditorExport::update_export_presets() {
+	Map<StringName, List<EditorExportPlatform::ExportOption> > platform_options;
+
+	for (int i = 0; i < export_platforms.size(); i++) {
+		Ref<EditorExportPlatform> platform = export_platforms[i];
+
+		if (platform->should_update_export_options()) {
+			List<EditorExportPlatform::ExportOption> options;
+			platform->get_export_options(&options);
+
+			platform_options[platform->get_name()] = options;
+		}
+	}
+
+	bool export_presets_updated = false;
+	for (int i = 0; i < export_presets.size(); i++) {
+		Ref<EditorExportPreset> preset = export_presets[i];
+		if (platform_options.has(preset->get_platform()->get_name())) {
+			export_presets_updated = true;
+
+			List<EditorExportPlatform::ExportOption> options = platform_options[preset->get_platform()->get_name()];
+
+			// Copy the previous preset values
+			Map<StringName, Variant> previous_values = preset->values;
+
+			// Clear the preset properties and values prior to reloading
+			preset->properties.clear();
+			preset->values.clear();
+
+			for (List<EditorExportPlatform::ExportOption>::Element *E = options.front(); E; E = E->next()) {
+				preset->properties.push_back(E->get().option);
+
+				StringName option_name = E->get().option.name;
+				preset->values[option_name] = previous_values.has(option_name) ? previous_values[option_name] : E->get().default_value;
+			}
+		}
+	}
+
+	if (export_presets_updated) {
+		emit_signal(_export_presets_updated);
+	}
+}
+
 bool EditorExport::poll_export_platforms() {
 
 	bool changed = false;
@@ -1428,7 +1512,10 @@ EditorExport::EditorExport() {
 	save_timer->connect("timeout", this, "_save");
 	block_save = false;
 
+	_export_presets_updated = "export_presets_updated";
+
 	singleton = this;
+	set_process(true);
 }
 
 EditorExport::~EditorExport() {

@@ -28,12 +28,14 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#include "servers/audio_server.h"
+#ifndef AUDIO_DRIVER_ALSA_H
+#define AUDIO_DRIVER_ALSA_H
 
 #ifdef ALSA_ENABLED
 
 #include "core/os/mutex.h"
 #include "core/os/thread.h"
+#include "servers/audio_server.h"
 
 #include <alsa/asoundlib.h>
 
@@ -87,4 +89,6 @@ public:
 	~AudioDriverALSA();
 };
 
-#endif
+#endif // ALSA_ENABLED
+
+#endif // AUDIO_DRIVER_ALSA_H

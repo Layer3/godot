@@ -38,6 +38,13 @@
 #include "editor/editor_settings.h"
 #include "scene/gui/split_container.h"
 
+void TileMapEditor::_node_removed(Node *p_node) {
+
+	if (p_node == node) {
+		node = NULL;
+	}
+}
+
 void TileMapEditor::_notification(int p_what) {
 
 	switch (p_what) {
@@ -50,15 +57,17 @@ void TileMapEditor::_notification(int p_what) {
 
 		} break;
 
+		case NOTIFICATION_ENTER_TREE: {
+
+			get_tree()->connect("node_removed", this, "_node_removed");
+			FALLTHROUGH;
+		}
+
 		case EditorSettings::NOTIFICATION_EDITOR_SETTINGS_CHANGED: {
 
 			if (is_visible_in_tree()) {
 				_update_palette();
 			}
-			FALLTHROUGH;
-		}
-
-		case NOTIFICATION_ENTER_TREE: {
 
 			paint_button->set_icon(get_icon("Edit", "EditorIcons"));
 			bucket_fill_button->set_icon(get_icon("Bucket", "EditorIcons"));
@@ -79,6 +88,10 @@ void TileMapEditor::_notification(int p_what) {
 			p->set_item_icon(p->get_item_index(OPTION_COPY), get_icon("Duplicate", "EditorIcons"));
 			p->set_item_icon(p->get_item_index(OPTION_ERASE_SELECTION), get_icon("Remove", "EditorIcons"));
 
+		} break;
+
+		case NOTIFICATION_EXIT_TREE: {
+			get_tree()->disconnect("node_removed", this, "_node_removed");
 		} break;
 	}
 }
@@ -190,6 +203,21 @@ void TileMapEditor::_palette_selected(int index) {
 
 void TileMapEditor::_palette_multi_selected(int index, bool selected) {
 	_update_palette();
+}
+
+void TileMapEditor::_palette_input(const Ref<InputEvent> &p_event) {
+	const Ref<InputEventMouseButton> mb = p_event;
+
+	// Zoom in/out using Ctrl + mouse wheel.
+	if (mb.is_valid() && mb->is_pressed() && mb->get_command()) {
+		if (mb->is_pressed() && mb->get_button_index() == BUTTON_WHEEL_UP) {
+			size_slider->set_value(size_slider->get_value() + 0.2);
+		}
+
+		if (mb->is_pressed() && mb->get_button_index() == BUTTON_WHEEL_DOWN) {
+			size_slider->set_value(size_slider->get_value() - 0.2);
+		}
+	}
 }
 
 void TileMapEditor::_canvas_mouse_enter() {
@@ -786,7 +814,6 @@ void TileMapEditor::_draw_cell(Control *p_viewport, int p_cell, const Point2i &p
 		r.size = node->get_tileset()->autotile_get_size(p_cell);
 		r.position += (r.size + Vector2(spacing, spacing)) * offset;
 	}
-	Size2 sc = p_xform.get_scale();
 	Size2 cell_size = node->get_cell_size();
 	bool centered_texture = node->is_centered_textures_enabled();
 	bool compatibility_mode_enabled = node->is_compatibility_mode_enabled();
@@ -820,12 +847,12 @@ void TileMapEditor::_draw_cell(Control *p_viewport, int p_cell, const Point2i &p
 	}
 
 	if (p_flip_h) {
-		sc.x *= -1.0;
+		rect.size.x *= -1.0;
 		tile_ofs.x *= -1.0;
 	}
 
 	if (p_flip_v) {
-		sc.y *= -1.0;
+		rect.size.y *= -1.0;
 		tile_ofs.y *= -1.0;
 	}
 
@@ -867,17 +894,17 @@ void TileMapEditor::_draw_cell(Control *p_viewport, int p_cell, const Point2i &p
 		rect.position += tile_ofs;
 	}
 
-	rect.position = p_xform.xform(rect.position);
-	rect.size *= sc;
-
 	Color modulate = node->get_tileset()->tile_get_modulate(p_cell);
 	modulate.a = 0.5;
 
+	Transform2D old_transform = p_viewport->get_viewport_transform();
+	p_viewport->draw_set_transform_matrix(p_xform); // Take into account TileMap transformation when displaying cell
 	if (r.has_no_area()) {
 		p_viewport->draw_texture_rect(t, rect, false, modulate, p_transpose);
 	} else {
 		p_viewport->draw_texture_rect_region(t, rect, r, modulate, p_transpose);
 	}
+	p_viewport->draw_set_transform_matrix(old_transform);
 }
 
 void TileMapEditor::_draw_fill_preview(Control *p_viewport, int p_cell, const Point2i &p_point, bool p_flip_h, bool p_flip_v, bool p_transpose, const Point2i &p_autotile_coord, const Transform2D &p_xform) {
@@ -1821,11 +1848,13 @@ void TileMapEditor::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_clear_transform"), &TileMapEditor::_clear_transform);
 	ClassDB::bind_method(D_METHOD("_palette_selected"), &TileMapEditor::_palette_selected);
 	ClassDB::bind_method(D_METHOD("_palette_multi_selected"), &TileMapEditor::_palette_multi_selected);
+	ClassDB::bind_method(D_METHOD("_palette_input"), &TileMapEditor::_palette_input);
 
 	ClassDB::bind_method(D_METHOD("_fill_points"), &TileMapEditor::_fill_points);
 	ClassDB::bind_method(D_METHOD("_erase_points"), &TileMapEditor::_erase_points);
 
 	ClassDB::bind_method(D_METHOD("_icon_size_changed"), &TileMapEditor::_icon_size_changed);
+	ClassDB::bind_method(D_METHOD("_node_removed"), &TileMapEditor::_node_removed);
 }
 
 TileMapEditor::CellOp TileMapEditor::_get_op_from_cell(const Point2i &p_pos) {
@@ -1982,6 +2011,7 @@ TileMapEditor::TileMapEditor(EditorNode *p_editor) {
 	palette->add_constant_override("vseparation", 8 * EDSCALE);
 	palette->connect("item_selected", this, "_palette_selected");
 	palette->connect("multi_selected", this, "_palette_multi_selected");
+	palette->connect("gui_input", this, "_palette_input");
 	palette_container->add_child(palette);
 
 	// Add message for when no texture is selected.
@@ -2020,19 +2050,19 @@ TileMapEditor::TileMapEditor(EditorNode *p_editor) {
 	toolbar->add_child(paint_button);
 
 	bucket_fill_button = memnew(ToolButton);
-	bucket_fill_button->set_shortcut(ED_SHORTCUT("tile_map_editor/bucket_fill", TTR("Bucket Fill"), KEY_G));
+	bucket_fill_button->set_shortcut(ED_SHORTCUT("tile_map_editor/bucket_fill", TTR("Bucket Fill"), KEY_B));
 	bucket_fill_button->connect("pressed", this, "_button_tool_select", make_binds(TOOL_BUCKET));
 	bucket_fill_button->set_toggle_mode(true);
 	toolbar->add_child(bucket_fill_button);
 
 	picker_button = memnew(ToolButton);
-	picker_button->set_shortcut(ED_SHORTCUT("tile_map_editor/pick_tile", TTR("Pick Tile"), KEY_CONTROL));
+	picker_button->set_shortcut(ED_SHORTCUT("tile_map_editor/pick_tile", TTR("Pick Tile"), KEY_I));
 	picker_button->connect("pressed", this, "_button_tool_select", make_binds(TOOL_PICKING));
 	picker_button->set_toggle_mode(true);
 	toolbar->add_child(picker_button);
 
 	select_button = memnew(ToolButton);
-	select_button->set_shortcut(ED_SHORTCUT("tile_map_editor/select", TTR("Select"), KEY_MASK_CMD + KEY_B));
+	select_button->set_shortcut(ED_SHORTCUT("tile_map_editor/select", TTR("Select"), KEY_M));
 	select_button->connect("pressed", this, "_button_tool_select", make_binds(TOOL_SELECTING));
 	select_button->set_toggle_mode(true);
 	toolbar->add_child(select_button);

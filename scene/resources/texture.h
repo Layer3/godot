@@ -675,11 +675,12 @@ class AnimatedTexture : public Texture {
 	//use readers writers lock for this, since its far more times read than written to
 	RWLock *rw_lock;
 
-private:
+public:
 	enum {
 		MAX_FRAMES = 256
 	};
 
+private:
 	RID proxy;
 
 	struct Frame {
@@ -695,7 +696,8 @@ private:
 	Frame frames[MAX_FRAMES];
 	int frame_count;
 	int current_frame;
-
+	bool pause;
+	bool oneshot;
 	float fps;
 
 	float time;
@@ -711,6 +713,15 @@ protected:
 public:
 	void set_frames(int p_frames);
 	int get_frames() const;
+
+	void set_current_frame(int p_frame);
+	int get_current_frame() const;
+
+	void set_pause(bool p_pause);
+	bool get_pause() const;
+
+	void set_oneshot(bool p_oneshot);
+	bool get_oneshot() const;
 
 	void set_frame_texture(int p_frame, const Ref<Texture> &p_texture);
 	Ref<Texture> get_frame_texture(int p_frame) const;
@@ -770,6 +781,36 @@ public:
 
 	CameraTexture();
 	~CameraTexture();
+};
+
+// External textures as defined by https://www.khronos.org/registry/OpenGL/extensions/OES/OES_EGL_image_external.txt
+class ExternalTexture : public Texture {
+	GDCLASS(ExternalTexture, Texture);
+
+private:
+	RID texture;
+	Size2 size;
+
+protected:
+	static void _bind_methods();
+
+public:
+	uint32_t get_external_texture_id();
+
+	virtual Size2 get_size() const;
+	void set_size(const Size2 &p_size);
+
+	virtual int get_width() const;
+	virtual int get_height() const;
+
+	virtual RID get_rid() const;
+	virtual bool has_alpha() const;
+
+	virtual void set_flags(uint32_t p_flags);
+	virtual uint32_t get_flags() const;
+
+	ExternalTexture();
+	~ExternalTexture();
 };
 
 #endif

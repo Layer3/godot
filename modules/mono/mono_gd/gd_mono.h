@@ -144,8 +144,10 @@ private:
 
 	void _register_internal_calls();
 
+#ifndef GD_MONO_SINGLE_APPDOMAIN
 	Error _load_scripts_domain();
 	Error _unload_scripts_domain();
+#endif
 
 	void _domain_assemblies_cleanup(uint32_t p_domain_id);
 
@@ -209,7 +211,7 @@ public:
 
 	// Do not use these, unless you know what you're doing
 	void add_assembly(uint32_t p_domain_id, GDMonoAssembly *p_assembly);
-	GDMonoAssembly **get_loaded_assembly(const String &p_name);
+	GDMonoAssembly *get_loaded_assembly(const String &p_name);
 
 	_FORCE_INLINE_ bool is_runtime_initialized() const { return runtime_initialized && !mono_runtime_is_shutting_down() /* stays true after shutdown finished */; }
 
@@ -239,6 +241,7 @@ public:
 
 	bool load_assembly(const String &p_name, GDMonoAssembly **r_assembly, bool p_refonly = false);
 	bool load_assembly(const String &p_name, MonoAssemblyName *p_aname, GDMonoAssembly **r_assembly, bool p_refonly = false);
+	bool load_assembly(const String &p_name, MonoAssemblyName *p_aname, GDMonoAssembly **r_assembly, bool p_refonly, const Vector<String> &p_search_dirs);
 	bool load_assembly_from(const String &p_name, const String &p_path, GDMonoAssembly **r_assembly, bool p_refonly = false);
 
 	Error finalize_and_unload_domain(MonoDomain *p_domain);

@@ -120,9 +120,15 @@ void Path2D::_notification(int p_what) {
 }
 
 void Path2D::_curve_changed() {
+	if (!is_inside_tree()) {
+		return;
+	}
 
-	if (is_inside_tree() && Engine::get_singleton()->is_editor_hint())
-		update();
+	if (!Engine::get_singleton()->is_editor_hint() && !get_tree()->is_debugging_navigation_hint()) {
+		return;
+	}
+
+	update();
 }
 
 void Path2D::set_curve(const Ref<Curve2D> &p_curve) {
@@ -316,16 +322,14 @@ void PathFollow2D::set_offset(float p_offset) {
 
 	offset = p_offset;
 	if (path) {
-		if (path->get_curve().is_valid() && path->get_curve()->get_baked_length()) {
+		if (path->get_curve().is_valid()) {
 			float path_length = path->get_curve()->get_baked_length();
 
 			if (loop) {
-				while (offset > path_length)
-					offset -= path_length;
-
-				while (offset < 0)
-					offset += path_length;
-
+				offset = Math::fposmod(offset, path_length);
+				if (!Math::is_zero_approx(p_offset) && Math::is_zero_approx(offset)) {
+					offset = path_length;
+				}
 			} else {
 				offset = CLAMP(offset, 0, path_length);
 			}
