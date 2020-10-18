@@ -51,6 +51,10 @@ void PAServer::thread_func(void *pUserData)
 PAServer *PAServer::singleton = nullptr;
 
 PAServer::PAServer()
+	: thread_exited(false)
+	, exit_thread(false)
+	, thread(nullptr)
+	, mutex(nullptr)
 {
 	singleton = this;
 }
