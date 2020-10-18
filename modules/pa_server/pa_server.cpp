@@ -27,10 +27,10 @@ PAServer::PAServer()
 
 Error PAServer::init()
 {
-        thread_exited = false;
-        mutex = Mutex::create();
-        thread = Thread::create(PAServer::thread_func, this);
-        return OK;
+    thread_exited = false;
+    mutex = Mutex::create();
+    thread = Thread::create(PAServer::thread_func, this);
+    return OK;
 }
 
 PAServer* PAServer::get_singleton()
