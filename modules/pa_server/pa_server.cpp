@@ -44,7 +44,7 @@ void PAServer::unlock()
     {
         return;
     }
-    
+
    mutex->unlock();
 }
 
@@ -64,11 +64,11 @@ void PAServer::finish()
     {
         return;
     }
-    
+
     exit_thread = true;
     Thread::wait_to_finish(thread);
     memdelete(thread);
-    
+
     if (mutex)
     {
         memdelete(mutex);
